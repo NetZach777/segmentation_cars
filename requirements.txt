@@ -1,0 +1,10 @@
+fastapi==0.95.1
+uvicorn==0.22.0
+tensorflow==2.10.0
+Pillow==10.4.0
+numpy==1.22.4
+python-multipart==0.0.5
+boto3
+# Pour les tests
+pytest==7.1.2
+httpx==0.23.0
