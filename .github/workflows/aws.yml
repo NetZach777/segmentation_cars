@@ -21,13 +21,16 @@ jobs:
     - name: Copy files to EC2 and deploy
       env:
         PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-        HOSTNAME: 13.48.10.30  # L'adresse IP publique de ton EC2
-        USER_NAME: ubuntu  # L'utilisateur Ubuntu par défaut pour EC2
+        HOSTNAME: 13.48.10.30  # Remplace par l'IP publique de ton EC2
+        USER_NAME: ubuntu  # Utilisateur 'ubuntu'
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       run: |
+        # Crée un fichier temporaire pour la clé privée
         echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
-        scp -o StrictHostKeyChecking=no -i private_key -r . ${USER_NAME}@${HOSTNAME}:/home/ubuntu/unet_api
+
+        # Copier les fichiers du projet vers EC2
+        scp -o StrictHostKeyChecking=no -i private_key -r . ${USER_NAME}@${HOSTNAME}:/home/ubuntu/unet_api/
 
         # Connexion SSH et déploiement
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
@@ -43,4 +46,5 @@ jobs:
           nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
         '
 
+        # Supprimer la clé privée après utilisation
         rm private_key
