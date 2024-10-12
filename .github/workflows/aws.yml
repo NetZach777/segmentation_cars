@@ -93,9 +93,11 @@ jobs:
           # Télécharger le modèle depuis S3 vers le chemin local avec la région spécifiée
           /usr/local/bin/aws s3 cp s3://${S3_BUCKET_NAME}/${S3_MODEL_KEY} ${LOCAL_MODEL_PATH} --region eu-north-1
 
-          # Activer l'environnement conda et installer les dépendances
+          # Activer l'environnement conda avec le chemin correct
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
           conda activate unet_api_env
+
+          # Installer les dépendances Python
           pip install -r requirements.txt
 
           # Démarrer l'application avec uvicorn
