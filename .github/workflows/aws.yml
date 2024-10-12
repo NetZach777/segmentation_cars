@@ -63,6 +63,7 @@ jobs:
         S3_BUCKET_NAME: 'awsmodelseg'
         S3_MODEL_KEY: 'unet_light_model_weighted_data_normal.h5'
         LOCAL_MODEL_PATH: '/home/ubuntu/unet_api/models/unet_light_model_weighted_data_normal.h5'
+        AWS_REGION: 'eu-north-1'
       run: |
         # Ajouter la clé privée à un fichier temporaire
         echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
@@ -86,10 +87,11 @@ jobs:
           # Configuration des credentials AWS pour télécharger depuis S3
           export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
           export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+          export AWS_REGION=${AWS_REGION}
 
           # Télécharger le modèle depuis S3 vers le chemin local
           mkdir -p $(dirname ${LOCAL_MODEL_PATH})
-          /usr/local/bin/aws s3 cp s3://${S3_BUCKET_NAME}/${S3_MODEL_KEY} ${LOCAL_MODEL_PATH}
+          /usr/local/bin/aws s3 cp s3://${S3_BUCKET_NAME}/${S3_MODEL_KEY} ${LOCAL_MODEL_PATH} --region ${AWS_REGION}
 
           # Activer l'environnement conda et installer les dépendances
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
