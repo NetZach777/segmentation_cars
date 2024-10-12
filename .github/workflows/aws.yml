@@ -71,10 +71,17 @@ jobs:
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           cd /home/ubuntu/unet_api
 
+          # Installer unzip si nécessaire
+          sudo apt-get update
+          sudo apt-get install -y unzip
+
           # Installer AWS CLI
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
           unzip awscliv2.zip
           sudo ./aws/install
+
+          # Assurer que AWS CLI est bien installé
+          export PATH=$PATH:/usr/local/bin/aws
 
           # Configuration des credentials AWS pour télécharger depuis S3
           export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
@@ -82,7 +89,7 @@ jobs:
 
           # Télécharger le modèle depuis S3 vers le chemin local
           mkdir -p $(dirname ${LOCAL_MODEL_PATH})
-          aws s3 cp s3://${S3_BUCKET_NAME}/${S3_MODEL_KEY} ${LOCAL_MODEL_PATH}
+          /usr/local/bin/aws s3 cp s3://${S3_BUCKET_NAME}/${S3_MODEL_KEY} ${LOCAL_MODEL_PATH}
 
           # Activer l'environnement conda et installer les dépendances
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
