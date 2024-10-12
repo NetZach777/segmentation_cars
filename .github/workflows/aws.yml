@@ -1,90 +1,46 @@
-name: Python application CI/CD
+name: Deploy FastAPI to EC2
 
 on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
-
-permissions:
-  contents: read
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Installation de Git LFS
-      run: |
-        sudo apt-get install git-lfs
-        git lfs install
-
-    - name: Checkout du code source
+    - name: Checkout code
       uses: actions/checkout@v2
-      with:
-        lfs: true
 
-    - name: Configuration de Python 3.9
-      uses: actions/setup-python@v2
-      with:
-        python-version: "3.9"
-
-    - name: Installation des dépendances Python
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install flake8 pytest
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install -r requirements.txt
 
-    - name: Cloner le dépôt sur l'EC2
+    - name: Copy files to EC2 and deploy
       env:
         PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-        HOSTNAME: ${{ secrets.HOST }}
-        USER_NAME: ${{ secrets.EC2_USER }}
-      run: |
-        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          if [ ! -d /home/ubuntu/unet_api ]; then
-            git clone https://github.com/NetZach777/unet_api.git /home/ubuntu/unet_api;
-          else
-            cd /home/ubuntu/unet_api && git pull;
-          fi
-        '
-        rm private_key
-
-    - name: Déploiement sur EC2 avec téléchargement depuis S3
-      env:
-        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-        HOSTNAME: ${{ secrets.HOST }}
-        USER_NAME: ${{ secrets.EC2_USER }}
+        HOSTNAME: 13.48.10.30  # L'adresse IP publique de ton EC2
+        USER_NAME: ubuntu  # L'utilisateur Ubuntu par défaut pour EC2
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        S3_BUCKET_NAME: 'awsmodelseg'  # Remplace par ton bucket S3
-        S3_MODEL_KEY: 'unet_light_model_weighted_data_normal.h5'  # Chemin vers ton modèle dans S3
       run: |
-        # Ajouter la clé privée à un fichier temporaire
         echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+        scp -o StrictHostKeyChecking=no -i private_key -r . ${USER_NAME}@${HOSTNAME}:/home/ubuntu/unet_api
 
-        # Se connecter à l'EC2 et exécuter les commandes de déploiement
+        # Connexion SSH et déploiement
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           cd /home/ubuntu/unet_api
-
-          # Configuration des credentials AWS sur l'EC2 pour télécharger depuis S3
-          export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-          export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-
-          # Téléchargement du modèle depuis S3 vers le dossier local sur l'EC2
-          aws s3 cp s3://${S3_BUCKET_NAME}/${S3_MODEL_KEY} /home/ubuntu/unet_api/models/unet_model.h5
-
-          # Activer l'environnement conda et installer les dépendances
-          source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
-          conda activate unet_api_env
+          
+          # Installer les dépendances
           pip install -r requirements.txt
 
-          # Démarrer l'application FastAPI avec Uvicorn en tâche de fond
+          # Télécharger le modèle depuis S3
+          python download_model.py
+
+          # Démarrer FastAPI en arrière-plan
           nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
         '
 
-        # Supprimer la clé privée après l'utilisation
         rm private_key
