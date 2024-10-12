@@ -75,10 +75,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y unzip
 
-          # Installer AWS CLI avec l'option --update
+          # Installer AWS CLI
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
           unzip awscliv2.zip
-          sudo ./aws/install --update
+          sudo ./aws/install
 
           # Assurer que AWS CLI est bien installé
           export PATH=$PATH:/usr/local/bin/aws
@@ -87,17 +87,13 @@ jobs:
           export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
           export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
 
-          # Créer le répertoire avec 'sudo' pour éviter les problèmes de permission
-          sudo mkdir -p $(dirname ${LOCAL_MODEL_PATH})
+          # Télécharger le modèle depuis S3 vers le chemin local
+          mkdir -p $(dirname ${LOCAL_MODEL_PATH})
+          /usr/local/bin/aws s3 cp s3://${S3_BUCKET_NAME}/${S3_MODEL_KEY} ${LOCAL_MODEL_PATH}
 
-          # Télécharger le modèle depuis S3 vers le chemin local avec la région spécifiée
-          /usr/local/bin/aws s3 cp s3://${S3_BUCKET_NAME}/${S3_MODEL_KEY} ${LOCAL_MODEL_PATH} --region eu-north-1
-
-          # Activer l'environnement conda avec le chemin correct
+          # Activer l'environnement conda et installer les dépendances
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
           conda activate unet_api_env
-
-          # Installer les dépendances Python
           pip install -r requirements.txt
 
           # Démarrer l'application avec uvicorn
