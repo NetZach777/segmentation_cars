@@ -44,7 +44,7 @@ jobs:
         USER_NAME: ${{ secrets.EC2_USER }}
       run: |
         echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+        ssh -v -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           if [ ! -d /home/ubuntu/unet_api ]; then
             git clone https://github.com/NetZach777/unet_api.git /home/ubuntu/unet_api;
           else
@@ -68,7 +68,7 @@ jobs:
         echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
 
         # Se connecter à l'EC2 et exécuter les commandes de déploiement
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+        ssh -v -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           cd /home/ubuntu/unet_api
 
           # Configuration des credentials AWS pour télécharger depuis S3
