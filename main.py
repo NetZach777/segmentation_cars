@@ -11,7 +11,7 @@ import io
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 # Paramètres S3
-BUCKET_NAME = 'awsmodelseg'  # Remplace avec ton nom de bucket
+BUCKET_NAME = 'awsmodelia'  # Remplace avec ton nom de bucket
 MODEL_KEY = 'unet_light_model_weighted_data_normal.h5'  # Chemin du modèle dans le bucket
 
 # Fonction pour télécharger le modèle depuis S3
