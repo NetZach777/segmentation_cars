@@ -23,6 +23,7 @@ s3 = boto3.client(
     region_name=AWS_REGION
 )
 
+
 # Nom du bucket et clé de l'objet (le modèle)
 BUCKET_NAME = 'awsmodelseg'
 OBJECT_KEY = 'unet_light_model_weighted_data_normal.h5'
