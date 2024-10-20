@@ -1,5 +1,5 @@
 import os
-import requests
+import boto3
 import tensorflow as tf
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import StreamingResponse
@@ -10,25 +10,36 @@ import io
 # Désactiver l'utilisation des GPU pour forcer TensorFlow à utiliser le CPU
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-# URL publique du modèle
-MODEL_URL = 'https://awsmodelia.s3.eu-north-1.amazonaws.com/unet_light_model_weighted_data_normal.h5'
+# Utiliser les variables d'environnement pour configurer l'accès à AWS
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+AWS_REGION = os.getenv('AWS_REGION', 'eu-north-1')
 
-# Fonction pour télécharger le modèle depuis l'URL publique
-def download_model_from_url(model_url, local_path):
+# Créer une session AWS avec boto3
+s3 = boto3.client(
+    's3',
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION
+)
+
+# Nom du bucket et clé de l'objet (le modèle)
+BUCKET_NAME = 'awsmodelseg'
+OBJECT_KEY = 'unet_light_model_weighted_data_normal.h5'
+LOCAL_MODEL_PATH = '/tmp/unet_light_model_weighted_data_normal.h5'
+
+# Fonction pour télécharger le modèle depuis S3
+def download_model_from_s3(bucket_name, object_key, local_path):
     try:
-        response = requests.get(model_url)
-        response.raise_for_status()  # Vérifie s'il y a une erreur dans la réponse HTTP
-        with open(local_path, 'wb') as f:
-            f.write(response.content)
-        print(f"Model downloaded from URL: {model_url}")
+        s3.download_file(bucket_name, object_key, local_path)
+        print(f"Model downloaded from S3: s3://{bucket_name}/{object_key}")
     except Exception as e:
-        print(f"Failed to download model from URL: {e}")
+        print(f"Failed to download model from S3: {e}")
         raise
 
-# Téléchargement du modèle depuis l'URL publique vers un fichier local
-LOCAL_MODEL_PATH = '/tmp/unet_light_model_weighted_data_normal.h5'
+# Télécharger le modèle depuis S3 vers un fichier local
 if not os.path.exists(LOCAL_MODEL_PATH):
-    download_model_from_url(MODEL_URL, LOCAL_MODEL_PATH)
+    download_model_from_s3(BUCKET_NAME, OBJECT_KEY, LOCAL_MODEL_PATH)
 
 # Charger le modèle U-Net (utilise le chemin local après le téléchargement)
 model = tf.keras.models.load_model(LOCAL_MODEL_PATH, compile=False)
@@ -58,44 +69,33 @@ def apply_color_palette(mask, palette):
 
 # Fonction pour prétraiter l'image (ajuster la taille à l'entrée du modèle)
 def preprocess_image(image, target_size):
-    # Vérifier si l'image a un canal alpha (RGBA) et le convertir en RGB
     if image.mode == 'RGBA':
         image = image.convert('RGB')
-
-    # Redimensionner l'image à la taille cible
     image = image.resize(target_size)
-    image = np.array(image) / 255.0  # Normalisation de l'image
-    image = np.expand_dims(image, axis=0)  # Ajouter une dimension batch
+    image = np.array(image) / 255.0
+    image = np.expand_dims(image, axis=0)
     return image
 
-# Point de terminaison pour la segmentation avec visualisation des couleurs
+# Point de terminaison pour la segmentation
 @app.post("/segment")
 async def segment_image(file: UploadFile = File(...)):
     try:
-        # Lire et ouvrir l'image
         contents = await file.read()
-
         try:
             image = Image.open(io.BytesIO(contents))
             print(f"Image successfully loaded: {file.filename}")
         except UnidentifiedImageError:
             return {"error": "Cannot identify image. Make sure the image is in the correct format."}
-
-        # Prétraiter l'image
+        
         target_size = (256, 256)
         preprocessed_image = preprocess_image(image, target_size)
 
-        # Effectuer la prédiction
         prediction = model.predict(preprocessed_image)
         predicted_mask = np.argmax(prediction, axis=-1)[0]
 
-        # Appliquer la palette de couleurs au masque
         colored_mask = apply_color_palette(predicted_mask, CITYSCAPES_PALETTE)
-
-        # Convertir le masque coloré en image
         color_image = Image.fromarray(colored_mask)
 
-        # Créer un flux binaire pour l'image
         img_byte_arr = io.BytesIO()
         color_image.save(img_byte_arr, format='PNG')
         img_byte_arr.seek(0)
@@ -105,7 +105,6 @@ async def segment_image(file: UploadFile = File(...)):
     except UnidentifiedImageError:
         return {"error": "Cannot identify image. Make sure the image is in the correct format."}
     except Exception as e:
-        # Log the full exception et return an error response
         print(f"Error during processing: {e}")
         return {"error": str(e)}
 
