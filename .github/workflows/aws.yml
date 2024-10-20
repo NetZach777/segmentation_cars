@@ -58,10 +58,7 @@ jobs:
         PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
         HOSTNAME: ${{ secrets.HOST }}
         USER_NAME: ${{ secrets.EC2_USER }}
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        S3_BUCKET_NAME: 'awsmodelseg'
-        S3_MODEL_KEY: 'unet_light_model_weighted_data_normal.h5'
+        MODEL_URL: 'https://awsmodelia.s3.eu-north-1.amazonaws.com/unet_light_model_weighted_data_normal.h5'
         LOCAL_MODEL_PATH: '/home/ubuntu/unet_api/models/unet_light_model_weighted_data_normal.h5'
       run: |
         # Ajouter la clé privée à un fichier temporaire
@@ -71,25 +68,8 @@ jobs:
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           cd /home/ubuntu/unet_api
 
-          # Installer unzip si nécessaire
-          sudo apt-get update
-          sudo apt-get install -y unzip
-
-          # Installer AWS CLI
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
-          sudo ./aws/install
-
-          # Assurer que AWS CLI est bien installé
-          export PATH=$PATH:/usr/local/bin/aws
-
-          # Configuration des credentials AWS pour télécharger depuis S3
-          export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-          export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-
-          # Télécharger le modèle depuis S3 vers le chemin local
-          mkdir -p $(dirname ${LOCAL_MODEL_PATH})
-          /usr/local/bin/aws s3 cp s3://${S3_BUCKET_NAME}/${S3_MODEL_KEY} ${LOCAL_MODEL_PATH}
+          # Télécharger le modèle directement depuis l'URL publique
+          curl -o ${LOCAL_MODEL_PATH} ${MODEL_URL}
 
           # Activer l'environnement conda et installer les dépendances
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
