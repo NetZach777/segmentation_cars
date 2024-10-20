@@ -53,7 +53,7 @@ jobs:
         '
         rm private_key
 
-    - name: Déploiement sur EC2
+    - name: Déploiement sur EC2  # Correction d'indentation ici
       env:
         PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
         HOSTNAME: ${{ secrets.HOST }}
@@ -69,6 +69,10 @@ jobs:
 
           # Créer le répertoire pour le modèle s'il n'existe pas
           mkdir -p /home/ubuntu/unet_api/models || echo "Répertoire déjà créé"
+
+          # Corriger les permissions pour permettre l'écriture dans le répertoire
+          sudo chown -R ${USER_NAME}:${USER_NAME} /home/ubuntu/unet_api
+          sudo chmod -R 755 /home/ubuntu/unet_api
 
           # Télécharger le modèle directement depuis l'URL publique
           if [ -w /home/ubuntu/unet_api/models ]; then
