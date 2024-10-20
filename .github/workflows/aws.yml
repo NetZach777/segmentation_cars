@@ -68,10 +68,15 @@ jobs:
           cd /home/ubuntu/unet_api
 
           # Créer le répertoire pour le modèle s'il n'existe pas
-          mkdir -p /home/ubuntu/unet_api/models
+          mkdir -p /home/ubuntu/unet_api/models || echo "Répertoire déjà créé"
 
           # Télécharger le modèle directement depuis l'URL publique
-          curl -o /home/ubuntu/unet_api/models/unet_light_model_weighted_data_normal.h5 ${MODEL_URL}
+          if [ -w /home/ubuntu/unet_api/models ]; then
+            curl -o /home/ubuntu/unet_api/models/unet_light_model_weighted_data_normal.h5 ${MODEL_URL}
+          else
+            echo "Erreur: impossible d'écrire dans le répertoire"
+            exit 1
+          fi
 
           # Activer l'environnement conda et installer les dépendances
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
