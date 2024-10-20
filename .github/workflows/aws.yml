@@ -37,11 +37,12 @@ jobs:
         pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-    - name: Mettre à jour AWS CLI
+    - name: Installer et ajouter AWS CLI au PATH
       run: |
         curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
         unzip awscliv2.zip
         sudo ./aws/install --update
+        export PATH=$PATH:/usr/local/bin  # Ajout manuel d'AWS CLI au PATH
         aws --version  # Vérification de l'installation
 
     - name: Téléchargement du modèle depuis S3
@@ -55,6 +56,7 @@ jobs:
       run: |
         echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+          export PATH=$PATH:/usr/local/bin  # Ajout manuel d'AWS CLI au PATH sur EC2
           mkdir -p /home/ubuntu/unet_api/models
           aws s3 cp s3://awsmodelseg/unet_light_model_weighted_data_normal.h5 /home/ubuntu/unet_api/models/unet_light_model_weighted_data_normal.h5
         '
@@ -68,6 +70,7 @@ jobs:
       run: |
         echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+          export PATH=$PATH:/usr/local/bin  # Assurez-vous qu'AWS CLI est dans le PATH
           cd /home/ubuntu/unet_api
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
           conda activate unet_api_env
