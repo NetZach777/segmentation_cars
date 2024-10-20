@@ -53,15 +53,17 @@ jobs:
         '
         rm private_key
 
-    - name: Télécharger et configurer AWS CLI
+    - name: Installer AWS CLI
       run: |
         sudo apt-get update
         sudo apt-get install -y awscli
+        aws --version  # Vérification de l'installation
 
     - name: Téléchargement du modèle depuis S3
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: eu-north-1  # Indiquer votre région AWS ici
         HOSTNAME: ${{ secrets.HOST }}
         USER_NAME: ${{ secrets.EC2_USER }}
         PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
@@ -80,7 +82,6 @@ jobs:
         USER_NAME: ${{ secrets.EC2_USER }}
       run: |
         echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
-        # Se connecter à l'EC2 et exécuter les commandes de déploiement
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           cd /home/ubuntu/unet_api
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
