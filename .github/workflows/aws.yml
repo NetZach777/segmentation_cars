@@ -37,26 +37,11 @@ jobs:
         pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-    - name: Cloner le dépôt sur l'EC2
-      env:
-        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-        HOSTNAME: ${{ secrets.HOST }}
-        USER_NAME: ${{ secrets.EC2_USER }}
+    - name: Installer AWS CLI manuellement
       run: |
-        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          if [ ! -d /home/ubuntu/unet_api ]; then
-            git clone https://github.com/NetZach777/unet_api.git /home/ubuntu/unet_api;
-          else
-            cd /home/ubuntu/unet_api && git pull;
-          fi
-        '
-        rm private_key
-
-    - name: Installer AWS CLI
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y awscli
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+        unzip awscliv2.zip
+        sudo ./aws/install
         aws --version  # Vérification de l'installation
 
     - name: Téléchargement du modèle depuis S3
@@ -89,6 +74,5 @@ jobs:
           pip install -r requirements.txt
           nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
         '
-        
         rm private_key
-        
+
