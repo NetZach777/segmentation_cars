@@ -59,7 +59,6 @@ jobs:
         HOSTNAME: ${{ secrets.HOST }}
         USER_NAME: ${{ secrets.EC2_USER }}
         MODEL_URL: 'https://awsmodelia.s3.eu-north-1.amazonaws.com/unet_light_model_weighted_data_normal.h5'
-        LOCAL_MODEL_PATH: '/home/ubuntu/unet_api/models/unet_light_model_weighted_data_normal.h5'
       run: |
         # Ajouter la clé privée à un fichier temporaire
         echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
@@ -69,10 +68,10 @@ jobs:
           cd /home/ubuntu/unet_api
 
           # Créer le répertoire pour le modèle s'il n'existe pas
-          mkdir -p $(dirname ${LOCAL_MODEL_PATH})
+          mkdir -p /home/ubuntu/unet_api/models
 
           # Télécharger le modèle directement depuis l'URL publique
-          curl -o ${LOCAL_MODEL_PATH} ${MODEL_URL}
+          curl -o /home/ubuntu/unet_api/models/unet_light_model_weighted_data_normal.h5 ${MODEL_URL}
 
           # Activer l'environnement conda et installer les dépendances
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
