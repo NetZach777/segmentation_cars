@@ -68,6 +68,9 @@ jobs:
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           cd /home/ubuntu/unet_api
 
+          # Créer le répertoire pour le modèle s'il n'existe pas
+          mkdir -p $(dirname ${LOCAL_MODEL_PATH})
+
           # Télécharger le modèle directement depuis l'URL publique
           curl -o ${LOCAL_MODEL_PATH} ${MODEL_URL}
 
