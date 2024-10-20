@@ -53,17 +53,23 @@ jobs:
         '
         rm private_key
 
+    - name: Télécharger et configurer AWS CLI
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y awscli
+
     - name: Téléchargement du modèle depuis S3
       env:
-        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         HOSTNAME: ${{ secrets.HOST }}
         USER_NAME: ${{ secrets.EC2_USER }}
+        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
       run: |
         echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
-        # Télécharger le modèle directement depuis l'URL publique
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           mkdir -p /home/ubuntu/unet_api/models
-          curl -o /home/ubuntu/unet_api/models/unet_light_model_weighted_data_normal.h5 https://awsmodelia.s3.eu-north-1.amazonaws.com/unet_light_model_weighted_data_normal.h5
+          aws s3 cp s3://awsmodelseg/unet_light_model_weighted_data_normal.h5 /home/ubuntu/unet_api/models/unet_light_model_weighted_data_normal.h5
         '
         rm private_key
 
@@ -83,4 +89,3 @@ jobs:
           nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
         '
         rm private_key
-
