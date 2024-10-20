@@ -1,5 +1,5 @@
 import os
-import boto3
+import requests
 import tensorflow as tf
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import StreamingResponse
@@ -10,24 +10,25 @@ import io
 # Désactiver l'utilisation des GPU pour forcer TensorFlow à utiliser le CPU
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-# Paramètres S3
-BUCKET_NAME = 'awsmodelia'  # Remplace avec ton nom de bucket
-MODEL_KEY = 'unet_light_model_weighted_data_normal.h5'  # Chemin du modèle dans le bucket
+# URL publique du modèle
+MODEL_URL = 'https://awsmodelia.s3.eu-north-1.amazonaws.com/unet_light_model_weighted_data_normal.h5'
 
-# Fonction pour télécharger le modèle depuis S3
-def download_model_from_s3(bucket_name, model_key, local_path):
-    s3 = boto3.client('s3')
+# Fonction pour télécharger le modèle depuis l'URL publique
+def download_model_from_url(model_url, local_path):
     try:
-        s3.download_file(bucket_name, model_key, local_path)
-        print(f"Model downloaded from S3: {model_key}")
+        response = requests.get(model_url)
+        response.raise_for_status()  # Vérifie s'il y a une erreur dans la réponse HTTP
+        with open(local_path, 'wb') as f:
+            f.write(response.content)
+        print(f"Model downloaded from URL: {model_url}")
     except Exception as e:
-        print(f"Failed to download model from S3: {e}")
+        print(f"Failed to download model from URL: {e}")
         raise
 
-# Téléchargement du modèle depuis S3 vers un fichier local
+# Téléchargement du modèle depuis l'URL publique vers un fichier local
 LOCAL_MODEL_PATH = '/tmp/unet_light_model_weighted_data_normal.h5'
 if not os.path.exists(LOCAL_MODEL_PATH):
-    download_model_from_s3(BUCKET_NAME, MODEL_KEY, LOCAL_MODEL_PATH)
+    download_model_from_url(MODEL_URL, LOCAL_MODEL_PATH)
 
 # Charger le modèle U-Net (utilise le chemin local après le téléchargement)
 model = tf.keras.models.load_model(LOCAL_MODEL_PATH, compile=False)
@@ -106,4 +107,5 @@ async def segment_image(file: UploadFile = File(...)):
     except Exception as e:
         # Log the full exception et return an error response
         print(f"Error during processing: {e}")
-        return {"error": str(e)} 
+        return {"error": str(e)}
+
