@@ -43,7 +43,7 @@ jobs:
         HOSTNAME: ${{ secrets.HOST }}
         USER_NAME: ${{ secrets.EC2_USER }}
       run: |
-        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+        echo "$PRIVATE_KEY" > private_key && chmod 400 private_key
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           if [ ! -d /home/ubuntu/unet_api ]; then
             git clone https://github.com/NetZach777/unet_api.git /home/ubuntu/unet_api;
@@ -61,7 +61,7 @@ jobs:
         MODEL_URL: 'https://awsmodelia.s3.eu-north-1.amazonaws.com/unet_light_model_weighted_data_normal.h5'
       run: |
         # Ajouter la clé privée à un fichier temporaire
-        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+        echo "$PRIVATE_KEY" > private_key && chmod 400 private_key
 
         # Se connecter à l'EC2 et exécuter les commandes de déploiement
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
