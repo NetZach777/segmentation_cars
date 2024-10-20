@@ -43,7 +43,7 @@ jobs:
         HOSTNAME: ${{ secrets.HOST }}
         USER_NAME: ${{ secrets.EC2_USER }}
       run: |
-        echo "$PRIVATE_KEY" > private_key && chmod 400 private_key
+        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           if [ ! -d /home/ubuntu/unet_api ]; then
             git clone https://github.com/NetZach777/unet_api.git /home/ubuntu/unet_api;
@@ -53,41 +53,29 @@ jobs:
         '
         rm private_key
 
+    - name: Téléchargement du modèle depuis S3
+      run: |
+        # Télécharger le modèle directement depuis l'URL publique
+        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+          mkdir -p /home/ubuntu/unet_api/models
+          curl -o /home/ubuntu/unet_api/models/unet_light_model_weighted_data_normal.h5 https://awsmodelia.s3.eu-north-1.amazonaws.com/unet_light_model_weighted_data_normal.h5
+        '
+
     - name: Déploiement sur EC2
       env:
         PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
         HOSTNAME: ${{ secrets.HOST }}
         USER_NAME: ${{ secrets.EC2_USER }}
-        MODEL_URL: 'https://awsmodelia.s3.eu-north-1.amazonaws.com/unet_light_model_weighted_data_normal.h5'
       run: |
         # Ajouter la clé privée à un fichier temporaire
-        echo "$PRIVATE_KEY" > private_key && chmod 400 private_key
+        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
 
         # Se connecter à l'EC2 et exécuter les commandes de déploiement
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           cd /home/ubuntu/unet_api
-
-          # Créer le répertoire pour le modèle s'il n'existe pas
-          mkdir -p /home/ubuntu/unet_api/models || echo "Répertoire déjà créé"
-
-          # Corriger les permissions pour permettre l'écriture dans le répertoire
-          sudo chown -R ubuntu:ubuntu /home/ubuntu/unet_api
-          sudo chmod -R 755 /home/ubuntu/unet_api
-
-          # Télécharger le modèle directement depuis l'URL publique
-          if [ -w /home/ubuntu/unet_api/models ]; then
-            curl -o /home/ubuntu/unet_api/models/unet_light_model_weighted_data_normal.h5 ${MODEL_URL}
-          else
-            echo "Erreur: impossible d'écrire dans le répertoire"
-            exit 1
-          fi
-
-          # Activer l'environnement conda et installer les dépendances
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
           conda activate unet_api_env
           pip install -r requirements.txt
-
-          # Démarrer l'application avec uvicorn
           nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
         '
 
