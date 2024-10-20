@@ -54,12 +54,18 @@ jobs:
         rm private_key
 
     - name: Téléchargement du modèle depuis S3
+      env:
+        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        HOSTNAME: ${{ secrets.HOST }}
+        USER_NAME: ${{ secrets.EC2_USER }}
       run: |
+        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
         # Télécharger le modèle directement depuis l'URL publique
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           mkdir -p /home/ubuntu/unet_api/models
           curl -o /home/ubuntu/unet_api/models/unet_light_model_weighted_data_normal.h5 https://awsmodelia.s3.eu-north-1.amazonaws.com/unet_light_model_weighted_data_normal.h5
         '
+        rm private_key
 
     - name: Déploiement sur EC2
       env:
@@ -67,9 +73,7 @@ jobs:
         HOSTNAME: ${{ secrets.HOST }}
         USER_NAME: ${{ secrets.EC2_USER }}
       run: |
-        # Ajouter la clé privée à un fichier temporaire
         echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
-
         # Se connecter à l'EC2 et exécuter les commandes de déploiement
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           cd /home/ubuntu/unet_api
@@ -78,6 +82,5 @@ jobs:
           pip install -r requirements.txt
           nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
         '
-
-        # Supprimer la clé privée après l'utilisation
         rm private_key
+
