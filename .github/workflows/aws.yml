@@ -20,33 +20,19 @@ jobs:
         sudo apt-get install -y git-lfs
         git lfs install
 
-    - name: Checkout du code source
-      uses: actions/checkout@v2
-      with:
-        lfs: true
-
-    - name: Configuration de Python 3.9
-      uses: actions/setup-python@v2
-      with:
-        python-version: "3.9"
-
-    - name: Préparation de l'environnement EC2
+    - name: Cloner le dépôt sur l'EC2
       env:
         PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
         HOSTNAME: ${{ secrets.HOST }}
         USER_NAME: ${{ secrets.EC2_USER }}
       run: |
-        echo "$PRIVATE_KEY" > private_key
-        chmod 600 private_key
-        
-        # Test de connexion SSH
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} 'echo "✅ Test de connexion SSH réussi"'
-        
-        # Création des dossiers nécessaires
+        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          mkdir -p /home/ubuntu/unet_api/models
-          cd /home/ubuntu/unet_api
-          echo "✅ Dossiers créés avec succès"
+          if [ ! -d /home/ubuntu/unet_api ]; then
+            git clone https://github.com/NetZach777/unet_api.git /home/ubuntu/unet_api;
+          else
+            cd /home/ubuntu/unet_api && git pull;
+          fi
         '
 
     - name: Configuration de l'environnement Conda
@@ -56,14 +42,11 @@ jobs:
         USER_NAME: ${{ secrets.EC2_USER }}
       run: |
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          # Configuration de Conda
-          export PATH="/home/ubuntu/miniconda3/bin:$PATH"
-          source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
-          
-          # Activation de l'environnement existant
+          eval "$(/home/ubuntu/miniconda3/bin/conda shell.bash hook)"
+          conda init bash
+          source ~/.bashrc
           conda activate unet_api_env
           
-          # Installation/Mise à jour des dépendances
           cd /home/ubuntu/unet_api
           pip install -r requirements.txt
           
@@ -79,29 +62,15 @@ jobs:
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       run: |
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          # Configuration AWS
           mkdir -p ~/.aws
           echo "[default]
           aws_access_key_id=$AWS_ACCESS_KEY_ID
           aws_secret_access_key=$AWS_SECRET_ACCESS_KEY
           region=eu-north-1" > ~/.aws/credentials
           
-          # Téléchargement du modèle
           cd /home/ubuntu/unet_api
+          mkdir -p models
           aws s3 cp s3://private-modelseg-637423565561/unet_light_model_weighted_data_normal.h5 models/
-          
-          echo "✅ Configuration AWS et téléchargement du modèle terminés"
-        '
-
-    - name: Arrêt du service existant
-      env:
-        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-        HOSTNAME: ${{ secrets.HOST }}
-        USER_NAME: ${{ secrets.EC2_USER }}
-      run: |
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          pkill -f "uvicorn main:app" || true
-          echo "✅ Service arrêté (si en cours)"
         '
 
     - name: Déploiement de l'application
@@ -111,47 +80,34 @@ jobs:
         USER_NAME: ${{ secrets.EC2_USER }}
       run: |
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          # Activation de Conda et de l'environnement
-          export PATH="/home/ubuntu/miniconda3/bin:$PATH"
-          source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
+          # Arrêt de l'ancienne instance
+          pkill -f "uvicorn main:app" || true
+          
+          # Démarrage avec Conda
+          eval "$(/home/ubuntu/miniconda3/bin/conda shell.bash hook)"
           conda activate unet_api_env
           
           cd /home/ubuntu/unet_api
-          
-          # Démarrage de l'application
           nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
           
-          # Vérification du démarrage
+          # Vérification
           sleep 10
-          if pgrep -f "uvicorn main:app" > /dev/null
-          then
-              echo "✅ Application démarrée avec succès"
+          if ps aux | grep -v grep | grep "uvicorn main:app"; then
+            echo "✅ Application démarrée"
           else
-              echo "❌ Erreur au démarrage de l'application"
-              exit 1
+            echo "❌ Erreur de démarrage"
+            exit 1
           fi
         '
-        rm private_key
 
-    - name: Vérification finale de l'API
+    - name: Vérification finale
       env:
         HOSTNAME: ${{ secrets.HOST }}
       run: |
         sleep 15
-        if curl -f http://${HOSTNAME}:8000/health
-        then
-            echo "✅ Application en ligne et fonctionnelle"
-        else
-            echo "❌ L'application ne répond pas"
-            exit 1
-        fi
+        curl -f http://${HOSTNAME}:8000/health || exit 1
+        echo "✅ API en ligne"
 
     - name: Nettoyage
       if: always()
-      run: |
-        rm -f private_key
-            echo "✅ Application en ligne et fonctionnelle"
-        else
-            echo "❌ L'application ne répond pas"
-            exit 1
-        fi
+      run: rm -f private_key
