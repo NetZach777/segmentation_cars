@@ -24,10 +24,10 @@ s3 = boto3.client(
 )
 
 
-# Nom du bucket et clé de l'objet (le modèle)
-BUCKET_NAME = 'awsmodelseg'
+# Configuration du bucket
+BUCKET_NAME = 'private-modelseg-637423565561'
 OBJECT_KEY = 'unet_light_model_weighted_data_normal.h5'
-LOCAL_MODEL_PATH = '/tmp/unet_light_model_weighted_data_normal.h5'
+LOCAL_MODEL_PATH = 'unet_light_model_weighted_data_normal.h5'
 
 # Fonction pour télécharger le modèle depuis S3
 def download_model_from_s3(bucket_name, object_key, local_path):
