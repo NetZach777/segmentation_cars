@@ -1,5 +1,4 @@
 name: Python application CI/CD
-
 on:
   push:
     branches:
@@ -7,14 +6,11 @@ on:
   pull_request:
     branches:
       - main
-
 permissions:
   contents: read
-
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
-
     steps:
     - name: Installation de Git LFS
       run: |
@@ -30,31 +26,31 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: "3.9"
+        
+    - name: Installation des dépendances
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio
+
+    - name: Test de configuration AWS
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: eu-north-1
+      run: |
+        aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+        aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+        aws configure set region $AWS_REGION
+        aws s3 ls s3://private-modelseg-637423565561
 
     - name: Installation de l'AWS CLI et ajout au PATH
       run: |
         curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
         unzip awscliv2.zip
         sudo ./aws/install --update
-        export PATH=$PATH:/usr/local/bin  # Ajout manuel d'AWS CLI au PATH
-        aws --version  # Vérification de l'installation
-
-    - name: Téléchargement du modèle depuis S3 avec `sudo`
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION: eu-north-1
-        HOSTNAME: ${{ secrets.HOST }}
-        USER_NAME: ${{ secrets.EC2_USER }}
-        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-      run: |
-        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          export PATH=$PATH:/usr/local/bin  # Ajout manuel d'AWS CLI au PATH sur EC2
-          sudo mkdir -p /home/ubuntu/unet_api/models  # Utilisation de sudo pour créer le répertoire
-          sudo aws s3 cp s3://awsmodelseg/unet_light_model_weighted_data_normal.h5 /home/ubuntu/unet_api/models/unet_light_model_weighted_data_normal.h5
-        '
-        rm private_key
+        export PATH=$PATH:/usr/local/bin
+        aws --version
 
     - name: Déploiement sur EC2
       env:
@@ -63,13 +59,29 @@ jobs:
         USER_NAME: ${{ secrets.EC2_USER }}
       run: |
         echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+        
+        # Arrêt du service existant
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          export PATH=$PATH:/usr/local/bin  # Assurez-vous qu'AWS CLI est dans le PATH
+          pkill -f "uvicorn main:app" || true
+        '
+        
+        # Déploiement du nouveau code
+        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+          export PATH=$PATH:/usr/local/bin
           cd /home/ubuntu/unet_api
+          git pull
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
           conda activate unet_api_env
           pip install -r requirements.txt
+          mkdir -p models
+          aws s3 cp s3://private-modelseg-637423565561/unet_light_model_weighted_data_normal.h5 models/
           nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
         '
         rm private_key
 
+    - name: Vérification du déploiement
+      env:
+        HOSTNAME: ${{ secrets.HOST }}
+      run: |
+        sleep 10  # Attendre que le serveur démarre
+        curl -f http://${HOSTNAME}:8000/health || exit 1
