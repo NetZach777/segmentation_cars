@@ -3,6 +3,7 @@ import boto3
 import tensorflow as tf
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 import numpy as np
 import io
@@ -23,30 +24,60 @@ s3 = boto3.client(
     region_name=AWS_REGION
 )
 
-
-# Configuration du bucket
+# Configuration du bucket et du modèle
 BUCKET_NAME = 'private-modelseg-637423565561'
 OBJECT_KEY = 'unet_light_model_weighted_data_normal.h5'
-LOCAL_MODEL_PATH = 'unet_light_model_weighted_data_normal.h5'
+LOCAL_MODEL_PATH = '/home/ubuntu/unet_api/models/unet_light_model_weighted_data_normal.h5'
+
+# Fonction améliorée pour vérifier et créer le chemin du modèle
+def check_model_path():
+    if not os.path.exists(LOCAL_MODEL_PATH):
+        model_dir = os.path.dirname(LOCAL_MODEL_PATH)
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir, exist_ok=True)
+        download_model_from_s3(BUCKET_NAME, OBJECT_KEY, LOCAL_MODEL_PATH)
+    return LOCAL_MODEL_PATH
 
 # Fonction pour télécharger le modèle depuis S3
 def download_model_from_s3(bucket_name, object_key, local_path):
     try:
         s3.download_file(bucket_name, object_key, local_path)
-        print(f"Model downloaded from S3: s3://{bucket_name}/{object_key}")
+        print(f"✅ Modèle téléchargé depuis S3: s3://{bucket_name}/{object_key}")
     except Exception as e:
-        print(f"Failed to download model from S3: {e}")
+        print(f"❌ Échec du téléchargement : {e}")
         raise
-
-# Télécharger le modèle depuis S3 vers un fichier local
-if not os.path.exists(LOCAL_MODEL_PATH):
-    download_model_from_s3(BUCKET_NAME, OBJECT_KEY, LOCAL_MODEL_PATH)
-
-# Charger le modèle U-Net (utilise le chemin local après le téléchargement)
-model = tf.keras.models.load_model(LOCAL_MODEL_PATH, compile=False)
 
 # Créer l'application FastAPI
 app = FastAPI()
+
+# Configuration CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Event de démarrage
+@app.on_event("startup")
+async def startup_event():
+    try:
+        model_path = check_model_path()
+        global model
+        model = tf.keras.models.load_model(model_path, compile=False)
+        print("✅ Application démarrée et modèle chargé")
+    except Exception as e:
+        print(f"❌ Erreur au démarrage : {e}")
+        raise
+
+# Endpoint de santé
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "model_loaded": os.path.exists(LOCAL_MODEL_PATH)
+    }
 
 # Palette de couleurs pour chaque classe du dataset Cityscapes
 CITYSCAPES_PALETTE = [
@@ -68,7 +99,7 @@ def apply_color_palette(mask, palette):
         color_mask[mask == class_id] = color
     return color_mask
 
-# Fonction pour prétraiter l'image (ajuster la taille à l'entrée du modèle)
+# Fonction pour prétraiter l'image
 def preprocess_image(image, target_size):
     if image.mode == 'RGBA':
         image = image.convert('RGB')
@@ -84,9 +115,9 @@ async def segment_image(file: UploadFile = File(...)):
         contents = await file.read()
         try:
             image = Image.open(io.BytesIO(contents))
-            print(f"Image successfully loaded: {file.filename}")
+            print(f"✅ Image chargée : {file.filename}")
         except UnidentifiedImageError:
-            return {"error": "Cannot identify image. Make sure the image is in the correct format."}
+            return {"error": "Format d'image non reconnu"}
         
         target_size = (256, 256)
         preprocessed_image = preprocess_image(image, target_size)
@@ -104,8 +135,11 @@ async def segment_image(file: UploadFile = File(...)):
         return StreamingResponse(img_byte_arr, media_type="image/png")
 
     except UnidentifiedImageError:
-        return {"error": "Cannot identify image. Make sure the image is in the correct format."}
+        return {"error": "Format d'image non reconnu"}
     except Exception as e:
-        print(f"Error during processing: {e}")
+        print(f"❌ Erreur durant le traitement : {e}")
         return {"error": str(e)}
 
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
