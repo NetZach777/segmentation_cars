@@ -40,34 +40,34 @@ jobs:
         chmod 600 private_key
         
         # Test de connexion SSH
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} 'echo "Test de connexion SSH réussi"'
+        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} 'echo "✅ Test de connexion SSH réussi"'
         
         # Création des dossiers nécessaires
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           mkdir -p /home/ubuntu/unet_api/models
           cd /home/ubuntu/unet_api
-          echo "Dossiers créés avec succès"
+          echo "✅ Dossiers créés avec succès"
         '
 
-    - name: Configuration Conda et dépendances
+    - name: Configuration de l'environnement Conda
       env:
         PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
         HOSTNAME: ${{ secrets.HOST }}
         USER_NAME: ${{ secrets.EC2_USER }}
       run: |
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          # Vérification de Conda
+          # Configuration de Conda
+          export PATH="/home/ubuntu/miniconda3/bin:$PATH"
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
           
-          # Création/Activation de l'environnement
-          conda create -n unet_api_env python=3.9 -y || true
+          # Activation de l'environnement existant
           conda activate unet_api_env
           
-          # Installation des dépendances
+          # Installation/Mise à jour des dépendances
           cd /home/ubuntu/unet_api
-          pip install fastapi uvicorn python-multipart pillow tensorflow boto3 python-dotenv
+          pip install -r requirements.txt
           
-          echo "Configuration Conda terminée"
+          echo "✅ Configuration Conda terminée"
         '
 
     - name: Configuration AWS et téléchargement du modèle
@@ -90,7 +90,7 @@ jobs:
           cd /home/ubuntu/unet_api
           aws s3 cp s3://private-modelseg-637423565561/unet_light_model_weighted_data_normal.h5 models/
           
-          echo "Configuration AWS et téléchargement du modèle terminés"
+          echo "✅ Configuration AWS et téléchargement du modèle terminés"
         '
 
     - name: Arrêt du service existant
@@ -101,7 +101,7 @@ jobs:
       run: |
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
           pkill -f "uvicorn main:app" || true
-          echo "Service arrêté (si en cours)"
+          echo "✅ Service arrêté (si en cours)"
         '
 
     - name: Déploiement de l'application
@@ -111,14 +111,17 @@ jobs:
         USER_NAME: ${{ secrets.EC2_USER }}
       run: |
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          cd /home/ubuntu/unet_api
+          # Activation de Conda et de l'environnement
+          export PATH="/home/ubuntu/miniconda3/bin:$PATH"
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
           conda activate unet_api_env
+          
+          cd /home/ubuntu/unet_api
           
           # Démarrage de l'application
           nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
           
-          # Attente et vérification
+          # Vérification du démarrage
           sleep 10
           if pgrep -f "uvicorn main:app" > /dev/null
           then
@@ -130,13 +133,23 @@ jobs:
         '
         rm private_key
 
-    - name: Vérification finale
+    - name: Vérification finale de l'API
       env:
         HOSTNAME: ${{ secrets.HOST }}
       run: |
         sleep 15
         if curl -f http://${HOSTNAME}:8000/health
         then
+            echo "✅ Application en ligne et fonctionnelle"
+        else
+            echo "❌ L'application ne répond pas"
+            exit 1
+        fi
+
+    - name: Nettoyage
+      if: always()
+      run: |
+        rm -f private_key
             echo "✅ Application en ligne et fonctionnelle"
         else
             echo "❌ L'application ne répond pas"
