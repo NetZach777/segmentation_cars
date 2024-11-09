@@ -39,35 +39,21 @@ jobs:
         echo "$PRIVATE_KEY" > private_key
         chmod 600 private_key
         
-        # Test de connexion SSH
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} 'echo "Test de connexion SSH réussi"'
-        
-        # Création des dossiers nécessaires
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          mkdir -p /home/ubuntu/unet_api/models
-          cd /home/ubuntu/unet_api
-          echo "Dossiers créés avec succès"
-        '
-
-    - name: Configuration Conda et dépendances
-      env:
-        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-        HOSTNAME: ${{ secrets.HOST }}
-        USER_NAME: ${{ secrets.EC2_USER }}
-      run: |
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          # Vérification de Conda
-          source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
+          # Initialisation de Conda
+          eval "$(~/miniconda3/bin/conda shell.bash hook)"
+          conda init bash
+          source ~/.bashrc
           
-          # Création/Activation de l'environnement
-          conda create -n unet_api_env python=3.9 -y || true
+          # Création de l'environnement
+          conda create -n unet_api_env python=3.9 -y
+          
+          # Activation et installation des packages
           conda activate unet_api_env
-          
-          # Installation des dépendances
-          cd /home/ubuntu/unet_api
           pip install fastapi uvicorn python-multipart pillow tensorflow boto3 python-dotenv
-          
-          echo "Configuration Conda terminée"
+
+          # Création des dossiers
+          mkdir -p /home/ubuntu/unet_api/models
         '
 
     - name: Configuration AWS et téléchargement du modèle
@@ -82,26 +68,13 @@ jobs:
           # Configuration AWS
           mkdir -p ~/.aws
           echo "[default]
-          aws_access_key_id=$AWS_ACCESS_KEY_ID
-          aws_secret_access_key=$AWS_SECRET_ACCESS_KEY
+          aws_access_key_id=${AWS_ACCESS_KEY_ID}
+          aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}
           region=eu-north-1" > ~/.aws/credentials
           
           # Téléchargement du modèle
           cd /home/ubuntu/unet_api
           aws s3 cp s3://private-modelseg-637423565561/unet_light_model_weighted_data_normal.h5 models/
-          
-          echo "Configuration AWS et téléchargement du modèle terminés"
-        '
-
-    - name: Arrêt du service existant
-      env:
-        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-        HOSTNAME: ${{ secrets.HOST }}
-        USER_NAME: ${{ secrets.EC2_USER }}
-      run: |
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          pkill -f "uvicorn main:app" || true
-          echo "Service arrêté (si en cours)"
         '
 
     - name: Déploiement de l'application
@@ -111,17 +84,18 @@ jobs:
         USER_NAME: ${{ secrets.EC2_USER }}
       run: |
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          cd /home/ubuntu/unet_api
-          source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
-          conda activate unet_api_env
+          # Arrêt du service existant
+          pkill -f "uvicorn main:app" || true
           
-          # Démarrage de l'application
+          # Activation de Conda et démarrage de l'application
+          eval "$(~/miniconda3/bin/conda shell.bash hook)"
+          conda activate unet_api_env
+          cd /home/ubuntu/unet_api
           nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
           
-          # Attente et vérification
+          # Vérification
           sleep 10
-          if pgrep -f "uvicorn main:app" > /dev/null
-          then
+          if pgrep -f "uvicorn main:app" > /dev/null; then
               echo "✅ Application démarrée avec succès"
           else
               echo "❌ Erreur au démarrage de l'application"
@@ -135,8 +109,7 @@ jobs:
         HOSTNAME: ${{ secrets.HOST }}
       run: |
         sleep 15
-        if curl -f http://${HOSTNAME}:8000/health
-        then
+        if curl -f http://${HOSTNAME}:8000/health; then
             echo "✅ Application en ligne et fonctionnelle"
         else
             echo "❌ L'application ne répond pas"
