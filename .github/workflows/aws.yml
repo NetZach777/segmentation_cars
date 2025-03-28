@@ -1,0 +1,82 @@
+name: U-Net API CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Étape 1 : Checkout du code source
+    - name: Checkout du code source
+      uses: actions/checkout@v2
+
+    # Étape 2 : Configuration de Python 3.9
+    - name: Configuration de Python 3.9
+      uses: actions/setup-python@v2
+      with:
+        python-version: "3.9"
+
+    # Étape 3 : Installation des dépendances Python
+    - name: Installation des dépendances Python
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 pytest
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    # Étape 4 : Cloner le dépôt sur l'EC2
+    - name: Cloner le dépôt sur l'EC2
+      env:
+        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        HOSTNAME: ${{ secrets.HOST }}
+        USER_NAME: ${{ secrets.EC2_USER }}
+      run: |
+        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+          if [ ! -d /home/ubuntu/segmentation_cars ]; then
+            git clone https://github.com/NetZach777/segmentation_cars.git /home/ubuntu/segmentation_cars;
+          else
+            cd /home/ubuntu/segmentation_cars && git pull;
+          fi
+        '
+        rm private_key
+
+    # Étape 5 : Téléchargement du modèle depuis S3
+    - name: Télécharger le modèle depuis S3
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+      run: |
+        aws s3 cp s3://$BUCKET_NAME/unet_light_model_weighted_data_normal.h5 /home/ubuntu/segmentation_cars/model/unet_light_model_weighted_data_normal.h5
+
+    # Étape 6 : Déploiement sur EC2
+    - name: Déploiement sur EC2
+      env:
+        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        HOSTNAME: ${{ secrets.HOST }}
+        USER_NAME: ${{ secrets.EC2_USER }}
+      run: |
+        # Ajouter la clé privée à un fichier temporaire
+        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+
+        # Se connecter à l'EC2 et exécuter les commandes de déploiement
+        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+          cd /home/ubuntu/segmentation_cars
+          source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
+          conda activate unet_api_env
+          pip install -r requirements.txt
+          nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
+        '
+
+        # Supprimer la clé privée après l'utilisation
+        rm private_key
