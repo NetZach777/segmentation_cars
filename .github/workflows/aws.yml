@@ -67,8 +67,14 @@ jobs:
       env:
         BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
       run: |
-        aws s3 cp s3://$BUCKET_NAME/unet_light_model_weighted_data_normal.h5 /home/ubuntu/segmentation_cars/model/unet_light_model_weighted_data_normal.h5
-
+        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+          # Créer les répertoires nécessaires et ajuster les permissions
+          mkdir -p /home/ubuntu/segmentation_cars/model
+          sudo chown -R ubuntu:ubuntu /home/ubuntu/segmentation_cars
+          # Télécharger le modèle depuis S3
+          aws s3 cp s3://$BUCKET_NAME/unet_light_model_weighted_data_normal.h5 /home/ubuntu/segmentation_cars/model/unet_light_model_weighted_data_normal.h5
+        '
+        
     # Étape 7 : Déploiement sur EC2
     - name: Déploiement sur EC2
       env:
