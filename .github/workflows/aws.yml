@@ -1,3 +1,4 @@
+# Workflow GitHub Actions - Configuration AWS CLI
 name: U-Net API CI/CD
 
 on:
@@ -50,16 +51,26 @@ jobs:
         '
         rm private_key
 
-    # Étape 5 : Téléchargement du modèle depuis S3
-    - name: Télécharger le modèle depuis S3
+    # Étape 5 : Configurer AWS CLI avec la région et les clés d'accès
+    - name: Configurer AWS CLI
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: ${{ secrets.AWS_REGION }}
+      run: |
+        aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+        aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+        aws configure set region $AWS_REGION
+        aws configure set output json
+
+    # Étape 6 : Télécharger le modèle depuis S3
+    - name: Télécharger le modèle depuis S3
+      env:
         BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
       run: |
         aws s3 cp s3://$BUCKET_NAME/unet_light_model_weighted_data_normal.h5 /home/ubuntu/segmentation_cars/model/unet_light_model_weighted_data_normal.h5
 
-    # Étape 6 : Déploiement sur EC2
+    # Étape 7 : Déploiement sur EC2
     - name: Déploiement sur EC2
       env:
         PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
