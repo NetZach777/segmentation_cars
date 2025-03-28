@@ -64,4 +64,4 @@ jobs:
             nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
 
             # Nettoyage de la clé privée après usage
-            rm -f /path/to/private_key
+            # La suppression de la clef n'est plus necessaire, l'action appleboy/ssh-action gère deja cette partie.
