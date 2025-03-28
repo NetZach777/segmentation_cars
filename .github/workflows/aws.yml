@@ -1,0 +1,113 @@
+name: Python application CI/CD
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Installation de Git LFS
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git-lfs
+        git lfs install
+
+    - name: Cloner le dépôt sur l'EC2
+      env:
+        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        HOSTNAME: ${{ secrets.HOST }}
+        USER_NAME: ${{ secrets.EC2_USER }}
+      run: |
+        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+          if [ ! -d /home/ubuntu/unet_api ]; then
+            git clone https://github.com/NetZach777/segmentation_cars.git /home/ubuntu/unet_api;
+          else
+            cd /home/ubuntu/unet_api && git pull;
+          fi
+        '
+
+    - name: Configuration de l'environnement Conda
+      env:
+        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        HOSTNAME: ${{ secrets.HOST }}
+        USER_NAME: ${{ secrets.EC2_USER }}
+      run: |
+        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+          eval "$(/home/ubuntu/miniconda3/bin/conda shell.bash hook)"
+          conda init bash
+          source ~/.bashrc
+          conda activate unet_api_env
+          
+          cd /home/ubuntu/unet_api
+          pip install -r requirements.txt
+          
+          echo "✅ Configuration Conda terminée"
+        '
+
+    - name: Configuration AWS et téléchargement du modèle
+      env:
+        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        HOSTNAME: ${{ secrets.HOST }}
+        USER_NAME: ${{ secrets.EC2_USER }}
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      run: |
+        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+          mkdir -p ~/.aws
+          echo "[default]
+          aws_access_key_id=$AWS_ACCESS_KEY_ID
+          aws_secret_access_key=$AWS_SECRET_ACCESS_KEY
+          region=eu-north-1" > ~/.aws/credentials
+          
+          cd /home/ubuntu/unet_api
+          mkdir -p models
+          aws s3 cp s3://private-modelseg-637423565561/unet_light_model_weighted_data_normal.h5 models/
+        '
+
+    - name: Déploiement de l'application
+      env:
+        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        HOSTNAME: ${{ secrets.HOST }}
+        USER_NAME: ${{ secrets.EC2_USER }}
+      run: |
+        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+          # Arrêt de l'ancienne instance
+          pkill -f "uvicorn main:app" || true
+          
+          # Démarrage avec Conda
+          eval "$(/home/ubuntu/miniconda3/bin/conda shell.bash hook)"
+          conda activate unet_api_env
+          
+          cd /home/ubuntu/unet_api
+          nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
+          
+          # Vérification
+          sleep 10
+          if ps aux | grep -v grep | grep "uvicorn main:app"; then
+            echo "✅ Application démarrée"
+          else
+            echo "❌ Erreur de démarrage"
+            exit 1
+          fi
+        '
+
+    - name: Vérification finale
+      env:
+        HOSTNAME: ${{ secrets.HOST }}
+      run: |
+        sleep 15
+        curl -f http://${HOSTNAME}:8000/health || exit 1
+        echo "✅ API en ligne"
+
+    - name: Nettoyage
+      if: always()
+      run: rm -f private_key
