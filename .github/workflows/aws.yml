@@ -12,103 +12,53 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-    # Étape 1 : Checkout du code source
-    - name: Checkout du code source
-      uses: actions/checkout@v2
+      - name: Checkout du code source
+        uses: actions/checkout@v2
 
-    # Étape 2 : Configuration de Python 3.9
-    - name: Configuration de Python 3.9
-      uses: actions/setup-python@v2
-      with:
-        python-version: "3.9"
+      - name: Configuration de Python 3.9
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.9"
 
-    # Étape 3 : Installation des dépendances Python
-    - name: Installation des dépendances Python
-      run: |
-        python -m pip install --upgrade pip
-        pip install flake8 pytest
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Installation des dépendances Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-    # Étape 4 : Cloner le dépôt sur l'EC2
-    - name: Cloner le dépôt sur l'EC2
-      env:
-        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-        HOSTNAME: ${{ secrets.HOST }}
-        USER_NAME: ${{ secrets.EC2_USER }}
-      run: |
-        # Créer le fichier de clé privée à partir du secret GitHub
-        echo "$PRIVATE_KEY" > private_key
-        chmod 600 private_key
-        
-        # Se connecter à l'EC2 via SSH et cloner le dépôt
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          if [ ! -d /home/ubuntu/segmentation_cars ]; then
-            git clone https://github.com/NetZach777/segmentation_cars.git /home/ubuntu/segmentation_cars;
-          else
-            cd /home/ubuntu/segmentation_cars && git pull;
-          fi
-        '
+      - name: Déploiement sur EC2
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            # Assurez-vous que le répertoire existe ou clonez le dépôt
+            if [ ! -d /home/ubuntu/segmentation_cars ]; then
+              git clone https://github.com/NetZach777/segmentation_cars.git /home/ubuntu/segmentation_cars
+            else
+              cd /home/ubuntu/segmentation_cars && git pull
+            fi
 
-        # Supprimer la clé privée après l'utilisation
-        rm private_key
+            # Configuration AWS CLI
+            aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws configure set region ${{ secrets.AWS_REGION }}
+            aws configure set output json
 
-    # Étape 5 : Configurer AWS CLI avec la région et les clés d'accès
-    - name: Configurer AWS CLI
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION: ${{ secrets.AWS_REGION }}
-      run: |
-        aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-        aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-        aws configure set region $AWS_REGION
-        aws configure set output json
+            # Création du dossier model et modification des droits
+            mkdir -p /home/ubuntu/segmentation_cars/model
+            sudo chown -R ubuntu:ubuntu /home/ubuntu/segmentation_cars
 
-    # Étape 6 : Télécharger le modèle depuis S3
-    - name: Télécharger le modèle depuis S3
-      env:
-        BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
-      run: |
-        # Créer le fichier de clé privée à partir du secret GitHub
-        echo "$PRIVATE_KEY" > private_key
-        chmod 600 private_key
+            # Téléchargement du modèle depuis S3
+            aws s3 cp s3://${{ secrets.BUCKET_NAME }}/unet_light_model_weighted_data_normal.h5 /home/ubuntu/segmentation_cars/model/unet_light_model_weighted_data_normal.h5
 
-        # Se connecter à l'EC2 via SSH et télécharger le modèle depuis S3
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          # Créer les répertoires nécessaires et ajuster les permissions
-          mkdir -p /home/ubuntu/segmentation_cars/model
-          sudo chown -R ubuntu:ubuntu /home/ubuntu/segmentation_cars
-
-          # Télécharger le modèle depuis S3
-          aws s3 cp s3://$BUCKET_NAME/unet_light_model_weighted_data_normal.h5 /home/ubuntu/segmentation_cars/model/unet_light_model_weighted_data_normal.h5
-        '
-
-        # Supprimer la clé privée après l'utilisation
-        rm private_key
-
-    # Étape 7 : Déploiement sur EC2
-    - name: Déploiement sur EC2
-      env:
-        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-        HOSTNAME: ${{ secrets.HOST }}
-        USER_NAME: ${{ secrets.EC2_USER }}
-      run: |
-        # Créer le fichier de clé privée à partir du secret GitHub
-        echo "$PRIVATE_KEY" > private_key
-        chmod 600 private_key
-
-        # Se connecter à l'EC2 via SSH et déployer l'application
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          cd /home/ubuntu/segmentation_cars
-          source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
-          conda activate unet_api_env
-          pip install -r requirements.txt
-          nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
-        '
-
-        # Supprimer la clé privée après l'utilisation
-        rm private_key
+            # Déploiement de l'application
+            source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
+            conda activate unet_api_env
+            pip install -r requirements.txt
+            nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
